@@ -20,6 +20,14 @@ import torch
 from rlkit.core.tabulate import tabulate
 from collections import OrderedDict
 
+try:
+    from torch.utils.tensorboard import SummaryWriter
+
+    TENSORBOARD_ALLOWED = True
+except ImportError as error:
+    TENSORBOARD_ALLOWED = False
+
+
 def add_prefix(log_dict: OrderedDict, prefix: str, divider=''):
     with_prefix = OrderedDict()
     for key, val in log_dict.items():
@@ -106,6 +114,9 @@ class Logger(object):
         self._header_printed = False
         self.table_printer = TerminalTablePrinter()
 
+        self._log_tensorboard = False
+        self._tb_writer = None
+
     def reset(self):
         self.__init__()
 
@@ -169,6 +180,14 @@ class Logger(object):
 
     def get_log_tabular_only(self, ):
         return self._log_tabular_only
+
+    def set_log_tensorboard(self, log_tensorboard):
+        if log_tensorboard and not TENSORBOARD_ALLOWED:
+            print('Tensorboard is not installed...')
+        self._log_tensorboard = TENSORBOARD_ALLOWED and log_tensorboard
+
+    def get_log_tensorboard(self, ):
+        return self._log_tensorboard
 
     def log(self, s, with_prefix=True, with_timestamp=True):
         out = s
@@ -297,14 +316,48 @@ class Logger(object):
 
                 writer = csv.DictWriter(tabular_fd,
                                         fieldnames=itr0_keys,
-                                        extrasaction="ignore",)
+                                        extrasaction="ignore", )
                 if wh or (
-                        wh is None and tabular_fd not in self._tabular_header_written):
+                    wh is None and tabular_fd not in self._tabular_header_written):
                     writer.writeheader()
                     self._tabular_header_written.add(tabular_fd)
                 writer.writerow(tabular_dict)
                 tabular_fd.flush()
             del self._tabular[:]
+
+            if self._log_tensorboard:
+                if self._tb_writer is None:
+                    self._tb_writer = SummaryWriter(self._snapshot_dir)
+
+                epoch = int(tabular_dict.get('epoch', 0))
+
+                def str_to_num(v):
+                    try:
+                        return int(v)
+                    except:
+                        return float(v)
+
+                new_tab_dict = {}
+                endings = [' Mean', ' Max', ' Min']
+                for k, v in tabular_dict.items():
+                    if any([k.endswith(e) for e in endings]):
+                        for ending in endings:
+                            if k.endswith(ending):
+                                new_key = k.replace(ending, '')
+                                item = new_tab_dict.get(new_key, {})
+                                item.update({ending.replace(' ', ''): str_to_num(v)})
+                                new_tab_dict[new_key] = item
+                                break
+                    else:
+                        new_tab_dict[k] = str_to_num(v)
+
+                for k, v in new_tab_dict.items():
+                    if isinstance(v, dict):
+                        self._tb_writer.add_scalars(k, v, epoch)
+                    else:
+                        self._tb_writer.add_scalar(k, v, epoch)
+                        pass
+
 
     def pop_prefix(self, ):
         del self._prefixes[-1]
@@ -336,4 +389,3 @@ class Logger(object):
 
 
 logger = Logger()
-

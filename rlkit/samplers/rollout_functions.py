@@ -98,7 +98,7 @@ def rollout(
     next_observations = []
     path_length = 0
     agent.reset()
-    o = env.reset()
+    o, _ = env.reset()
     if reset_callback:
         reset_callback(env, agent, o)
     if render:
@@ -111,17 +111,18 @@ def rollout(
         if full_o_postprocess_func:
             full_o_postprocess_func(env, agent, o)
 
-        next_o, r, done, env_info = env.step(copy.deepcopy(a))
+        next_o, r, terminal, truncated, env_info = env.step(copy.deepcopy(a))
         if render:
             env.render(**render_kwargs)
         observations.append(o)
         rewards.append(r)
-        terminal = False
-        if done:
-            # terminal=False if TimeLimit caused termination
-            if not env_info.pop('TimeLimit.truncated', False):
-                terminal = True
+        # terminal = False
+        # if done:
+        #     # terminal=False if TimeLimit caused termination
+        #     if not env_info.pop('TimeLimit.truncated', False):
+        #         terminal = True
         terminals.append(terminal)
+        done = terminal or truncated
         dones.append(done)
         actions.append(a)
         next_observations.append(next_o)
@@ -186,7 +187,7 @@ def deprecated_rollout(
     terminals = []
     agent_infos = []
     env_infos = []
-    o = env.reset()
+    o, _ = env.reset()
     agent.reset()
     next_o = None
     path_length = 0
